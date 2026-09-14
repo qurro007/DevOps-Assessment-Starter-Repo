@@ -1,0 +1,6 @@
+.env
+infra/
+.github/
+app/test_app.py
+**/__pycache__/
+*.pyc

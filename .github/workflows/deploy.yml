@@ -1,0 +1,66 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    # OLD: env:
+    # OLD:   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    # OLD:   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    # OLD:   AWS_REGION: us-east-1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r app/requirements.txt pytest
+
+      - name: Run tests
+        # OLD: continue-on-error: true
+        run: pytest app/
+
+      - name: Build and push image
+        # OLD: run: |
+        # OLD:   docker build -t $ECR_URL:latest .
+        # OLD:   docker push $ECR_URL:latest
+        run: |
+          docker build -t $ECR_URL:${{ github.sha }} .
+          docker push $ECR_URL:${{ github.sha }}
+        env:
+          ECR_URL: 123456789012.dkr.ecr.us-east-1.amazonaws.com/demo-api
+
+      - name: Terraform apply
+        working-directory: infra
+        # OLD: run: |
+        # OLD:   terraform init
+        # OLD:   terraform apply -auto-approve
+        run: |
+          terraform init
+          terraform apply -auto-approve -var image_tag=${{ github.sha }} -var db_password=${{ secrets.DB_PASSWORD }}
+
+      - name: Force new deployment
+        run: |
+          aws ecs update-service \
+            --cluster demo-api-cluster \
+            --service demo-api \
+            --force-new-deployment
